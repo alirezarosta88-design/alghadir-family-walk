@@ -3,906 +3,516 @@ import re
 import io
 import hmac
 import secrets
+from datetime import timedelta
 from functools import wraps
 
 from flask import (
-    Flask, request, redirect, session,
-    render_template_string, send_file
+    Flask, request, redirect, session, render_template_string,
+    send_file, flash, abort, url_for
 )
 from supabase import create_client
 from openpyxl import Workbook
 
 
-# -------------------- تنظیمات اصلی --------------------
+# ---------------------------------------------------------
+# 1) SETTINGS
+# ---------------------------------------------------------
+
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_SERVICE_ROLE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+FLASK_SECRET_KEY = os.environ.get("FLASK_SECRET_KEY")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
+FAMILY_ACCESS_PASSWORD = os.environ.get("FAMILY_ACCESS_PASSWORD")
+
+required_settings = {
+    "SUPABASE_URL": SUPABASE_URL,
+    "SUPABASE_SERVICE_ROLE_KEY": SUPABASE_SERVICE_ROLE_KEY,
+    "FLASK_SECRET_KEY": FLASK_SECRET_KEY,
+    "ADMIN_PASSWORD": ADMIN_PASSWORD,
+    "FAMILY_ACCESS_PASSWORD": FAMILY_ACCESS_PASSWORD,
+}
+
+missing_settings = [key for key, value in required_settings.items() if not value]
+if missing_settings:
+    raise RuntimeError(
+        "Missing Render environment variables: " + ", ".join(missing_settings)
+    )
 
 app = Flask(__name__)
-app.secret_key = os.environ["FLASK_SECRET_KEY"]
-
+app.secret_key = FLASK_SECRET_KEY
+app.permanent_session_lifetime = timedelta(hours=12)
 app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SECURE=True,
     SESSION_COOKIE_SAMESITE="Lax",
+    MAX_CONTENT_LENGTH=2 * 1024 * 1024,
 )
 
-db = create_client(
-    os.environ["SUPABASE_URL"],
-    os.environ["SUPABASE_SERVICE_ROLE_KEY"]
-)
+db = create_client(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-FAMILY_PASSWORD = os.environ["FAMILY_ACCESS_PASSWORD"]
-ADMIN_PASSWORD = os.environ["ADMIN_PASSWORD"]
 
-MAX_MEMBERS = 20
-
-
-# -------------------- طراحی و رنگ‌بندی --------------------
-
-BASE = """
-<!doctype html>
-<html lang="fa" dir="rtl">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#101a35">
-<title>ALGHADIR WALK | الغدیر واک</title>
-
-<style>
-:root {
-    --navy: #101a35;
-    --navy2: #1b2949;
-    --gold: #d6ad55;
-    --gold2: #f4d991;
-    --cream: #fffaf0;
-    --white: #ffffff;
-    --muted: #778098;
-    --red: #b94352;
-    --teal: #258d88;
-    --purple: #7860a8;
-}
-
-* {
-    box-sizing: border-box;
-}
-
-body {
-    margin: 0;
-    direction: rtl;
-    font-family: Tahoma, Arial, sans-serif;
-    color: var(--navy);
-    background:
-        radial-gradient(circle at 10% 10%, #e9dfc8 0, transparent 30%),
-        radial-gradient(circle at 90% 80%, #d9e4ed 0, transparent 30%),
-        #f5f3ee;
-    min-height: 100vh;
-}
-
-.hero {
-    position: relative;
-    overflow: hidden;
-    padding: 35px 15px 25px;
-    text-align: center;
-    color: white;
-    background:
-        radial-gradient(circle at 15% 20%, #33456c 0, transparent 35%),
-        radial-gradient(circle at 85% 80%, #4a3b61 0, transparent 35%),
-        linear-gradient(135deg, #0d1730, #202d4c);
-    border-bottom: 3px solid var(--gold);
-}
-
-.hero:before,
-.hero:after {
-    content: "";
-    position: absolute;
-    border: 1px solid #d6ad5530;
-    border-radius: 50%;
-    width: 220px;
-    height: 220px;
-    pointer-events: none;
-}
-
-.hero:before {
-    top: -130px;
-    right: -80px;
-}
-
-.hero:after {
-    bottom: -170px;
-    left: -80px;
-}
-
-.hero-inner {
-    position: relative;
-    z-index: 1;
-    max-width: 850px;
-    margin: auto;
-}
-
-.eyebrow {
-    display: inline-block;
-    padding: 7px 16px;
-    border: 1px solid #d6ad5580;
-    border-radius: 30px;
-    color: var(--gold2);
-    font-size: 12px;
-    margin-bottom: 12px;
-    background: #ffffff0a;
-}
-
-.brand {
-    font-family: Arial, sans-serif;
-    font-size: clamp(27px, 6vw, 43px);
-    font-weight: 900;
-    letter-spacing: 3px;
-    margin: 5px 0;
-}
-
-.brand span {
-    color: var(--gold2);
-}
-
-.fa-brand {
-    color: var(--gold2);
-    font-size: 25px;
-    font-weight: bold;
-    margin: 8px 0;
-}
-
-.tagline {
-    color: #d5dced;
-    font-size: 13px;
-    margin: 8px 0 20px;
-}
-
-.nav-menu {
-    display: flex;
-    justify-content: center;
-    flex-wrap: wrap;
-    gap: 9px;
-}
-
-.nav-menu a {
-    text-decoration: none;
-    padding: 10px 17px;
-    border-radius: 12px;
-    color: white;
-    font-size: 13px;
-    transition: .2s;
-}
-
-.nav-menu a:hover {
-    transform: translateY(-2px);
-    filter: brightness(1.15);
-}
-
-.nav-home {
-    background: #52617f;
-}
-
-.nav-register {
-    background: #258d88;
-}
-
-.nav-admin {
-    background: #7860a8;
-}
-
-main {
-    max-width: 850px;
-    margin: 28px auto;
-    padding: 0 14px;
-    min-height: 350px;
-}
-
-.card {
-    background: rgba(255,255,255,.96);
-    border: 1px solid #e8dfca;
-    border-radius: 20px;
-    padding: 25px;
-    margin-bottom: 20px;
-    box-shadow: 0 12px 35px #101a3510;
-}
-
-.card h2 {
-    text-align: center;
-    color: var(--navy);
-    margin-top: 5px;
-}
-
-.section-kicker {
-    text-align: center;
-    color: #a88743;
-    font-size: 11px;
-    font-weight: bold;
-    letter-spacing: 1px;
-}
-
-.description {
-    color: #687187;
-    line-height: 2;
-    text-align: center;
-    font-size: 14px;
-}
-
-input {
-    width: 100%;
-    padding: 14px;
-    margin: 8px 0;
-    border: 1px solid #dce0e8;
-    border-radius: 11px;
-    background: #fafbfe;
-    font-size: 15px;
-    font-family: Tahoma, Arial, sans-serif;
-    outline: none;
-}
-
-input:focus {
-    border-color: var(--gold);
-    box-shadow: 0 0 0 3px #d6ad5520;
-}
-
-button, .btn {
-    display: block;
-    width: 100%;
-    padding: 13px;
-    border: 0;
-    border-radius: 11px;
-    background: linear-gradient(135deg, #b68a36, #e5c879);
-    color: #17213a;
-    font-size: 14px;
-    font-weight: bold;
-    font-family: Tahoma, Arial, sans-serif;
-    text-align: center;
-    text-decoration: none;
-    margin-top: 12px;
-    cursor: pointer;
-    transition: .2s;
-}
-
-button:hover, .btn:hover {
-    transform: translateY(-2px);
-    filter: brightness(1.04);
-}
-
-.btn-teal {
-    background: var(--teal);
-    color: white;
-}
-
-.btn-purple {
-    background: var(--purple);
-    color: white;
-}
-
-.no, .btn-red {
-    background: var(--red);
-    color: white;
-}
-
-.member {
-    background: #f7f8fb;
-    border: 1px solid #e5e8ef;
-    padding: 14px;
-    border-radius: 13px;
-    margin: 12px 0;
-}
-
-.member-title {
-    color: #9a7a3c;
-    font-size: 12px;
-    font-weight: bold;
-}
-
-.stat {
-    background: linear-gradient(135deg, #f7f1e3, #fffaf0);
-    border: 1px solid #eadbb8;
-    padding: 16px;
-    border-radius: 13px;
-    margin: 9px 0;
-    text-align: center;
-}
-
-.stats {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 10px;
-    margin: 18px 0;
-}
-
-.stat strong {
-    display: block;
-    font-size: 25px;
-    color: #9b7734;
-    margin-bottom: 6px;
-}
-
-.stat span {
-    font-size: 12px;
-    color: #687187;
-}
-
-.search-box {
-    background: #f7f8fb;
-    border: 1px solid #e7e9ef;
-    padding: 15px;
-    border-radius: 15px;
-    margin: 18px 0;
-}
-
-.table-wrap {
-    overflow-x: auto;
-    border-radius: 12px;
-}
-
-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
-    min-width: 560px;
-    background: white;
-}
-
-td, th {
-    padding: 12px 9px;
-    border-bottom: 1px solid #ececf0;
-    text-align: right;
-    vertical-align: top;
-}
-
-th {
-    background: var(--navy2);
-    color: white;
-}
-
-table button {
-    min-width: 60px;
-    width: auto;
-    padding: 8px 12px;
-    margin: 0;
-    font-size: 12px;
-}
-
-.empty {
-    text-align: center;
-    color: var(--muted);
-    padding: 20px;
-}
-
-footer {
-    text-align: center;
-    padding: 22px 10px;
-    color: #9299a8;
-    font-size: 9px;
-    letter-spacing: .2px;
-}
-
-footer span {
-    color: #9a814f;
-}
-
-@media(max-width:600px) {
-    .hero {
-        padding-top: 27px;
-    }
-
-    .card {
-        padding: 20px 16px;
-        border-radius: 18px;
-    }
-
-    .stats {
-        grid-template-columns: 1fr;
-        gap: 7px;
-    }
-
-    .stat {
-        padding: 13px 5px;
-    }
-
-    .stat strong {
-        font-size: 21px;
-    }
-
-    .stat span {
-        font-size: 10px;
-    }
-
-    .nav-menu a {
-        padding: 9px 12px;
-        font-size: 12px;
-    }
-}
-</style>
-</head>
-
-<body>
-
-<header class="hero">
-    <div class="hero-inner">
-        <div class="eyebrow">✦ یک روز زیبا در کنار خانواده ✦</div>
-
-        <h1 class="brand">ALGHADIR <span>WALK</span></h1>
-
-        <div class="fa-brand">الغدیر واک</div>
-
-        <p class="tagline">
-            سامانه ثبت‌نام پیاده‌روی خانوادگی
-        </p>
-
-        <nav class="nav-menu">
-            <a class="nav-home" href="/">⌂ صفحه اصلی</a>
-            <a class="nav-register" href="/register">✦ ثبت‌نام خانواده</a>
-            <a class="nav-admin" href="/admin">♛ مدیریت</a>
-        </nav>
-    </div>
-</header>
-
-<main>
-    {{ body|safe }}
-</main>
-
-<footer>
-    <span>سازنده: علیرضا روستا</span>
-</footer>
-
-</body>
-</html>
-"""
-
-
-# -------------------- توابع کمکی --------------------
-
-def page(template, **data):
-    body = render_template_string(template, **data)
-    return render_template_string(BASE, body=body)
-
+# ---------------------------------------------------------
+# 2) SECURITY HELPERS
+# ---------------------------------------------------------
 
 def csrf_token():
-    if "csrf" not in session:
-        session["csrf"] = secrets.token_urlsafe(32)
-    return session["csrf"]
+    if "_csrf_token" not in session:
+        session["_csrf_token"] = secrets.token_urlsafe(32)
+    return session["_csrf_token"]
 
 
 def check_csrf():
-    token = request.form.get("csrf", "")
-    saved = session.get("csrf", "")
-    return bool(saved) and hmac.compare_digest(token, saved)
+    sent = request.form.get("_csrf", "")
+    saved = session.get("_csrf_token", "")
+    return bool(sent and saved and hmac.compare_digest(sent, saved))
 
 
-def admin_required(fn):
-    @wraps(fn)
+def require_csrf():
+    if not check_csrf():
+        abort(400, description="درخواست نامعتبر است. صفحه را تازه‌سازی کنید.")
+
+
+def family_required(function):
+    @wraps(function)
     def wrapper(*args, **kwargs):
-        if not session.get("admin"):
-            return redirect("/admin")
-        return fn(*args, **kwargs)
+        if not session.get("family_phone"):
+            return redirect(url_for("home"))
+        return function(*args, **kwargs)
     return wrapper
 
 
+def admin_required(function):
+    @wraps(function)
+    def wrapper(*args, **kwargs):
+        if not session.get("is_admin"):
+            return redirect(url_for("admin"))
+        return function(*args, **kwargs)
+    return wrapper
+
+
+def page(template, **context):
+    context.setdefault("token", csrf_token())
+    body = render_template_string(template, **context)
+    return render_template_string(BASE, content=body)
+
+
 def safe_excel(value):
-    value = str(value or "")
+    """Prevent spreadsheet formula injection in exported text."""
+    value = "" if value is None else str(value)
     if value.startswith(("=", "+", "-", "@")):
         return "'" + value
     return value
 
 
-# -------------------- صفحه اصلی و ورود خانواده --------------------
+# ---------------------------------------------------------
+# 3) SHARED DESIGN
+# ---------------------------------------------------------
+
+BASE = r"""
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#08172d">
+    <title>ALGHADIR WALK | الغدیر واک</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --navy: #07162b;
+            --navy2: #102744;
+            --gold: #e8bd62;
+            --gold2: #f7df9c;
+            --cream: #fffaf0;
+            --muted: #aebbd0;
+            --teal: #28b7a5;
+            --red: #d85b69;
+            --purple: #8b78dc;
+        }
+        * { box-sizing: border-box; font-family: "Vazirmatn", Tahoma, sans-serif; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            color: var(--cream);
+            background:
+                radial-gradient(ellipse at 12% 8%, rgba(232,189,98,.18), transparent 32%),
+                radial-gradient(ellipse at 90% 75%, rgba(40,183,165,.13), transparent 30%),
+                linear-gradient(135deg, #061225 0%, #0b1e37 52%, #102744 100%);
+        }
+        a { color: var(--gold2); text-decoration: none; }
+        .topbar {
+            width: min(1100px, 94%);
+            margin: 24px auto 18px;
+            padding: 19px 24px;
+            border: 1px solid rgba(232,189,98,.35);
+            border-radius: 22px;
+            background: linear-gradient(120deg, rgba(255,255,255,.09), rgba(255,255,255,.025));
+            box-shadow: 0 15px 45px rgba(0,0,0,.22);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 15px;
+        }
+        .brand { display: flex; align-items: center; gap: 13px; }
+        .brand-mark {
+            width: 48px; height: 48px; border-radius: 16px;
+            display: grid; place-items: center;
+            color: var(--navy); font-size: 25px; font-weight: 900;
+            background: linear-gradient(145deg, var(--gold2), #c99438);
+            box-shadow: 0 5px 22px rgba(232,189,98,.24);
+        }
+        .brand-en { color: var(--gold2); font-size: 17px; font-weight: 900; letter-spacing: 2px; }
+        .brand-fa { color: white; font-size: 13px; opacity: .9; }
+        .top-tag {
+            color: var(--gold2); border: 1px solid rgba(232,189,98,.35);
+            border-radius: 30px; padding: 8px 13px; font-size: 12px;
+        }
+        main { width: min(1000px, 94%); margin: 0 auto 45px; }
+        .hero { text-align: center; padding: 24px 10px 19px; }
+        .hero .eyebrow { color: var(--gold); letter-spacing: 3px; font-size: 11px; font-weight: 800; }
+        .hero h1 { margin: 8px 0 5px; font-size: clamp(27px, 6vw, 43px); font-weight: 900; color: white; }
+        .hero p { color: var(--muted); margin: 0; font-size: 14px; }
+        .card {
+            max-width: 760px; margin: 15px auto; padding: clamp(20px, 4vw, 34px);
+            border: 1px solid rgba(232,189,98,.23); border-radius: 25px;
+            background: linear-gradient(145deg, rgba(255,255,255,.105), rgba(255,255,255,.045));
+            box-shadow: 0 20px 55px rgba(0,0,0,.25);
+            backdrop-filter: blur(12px);
+        }
+        .card.wide { max-width: 100%; }
+        .section-kicker { color: var(--gold); font-size: 11px; letter-spacing: 2px; font-weight: 800; }
+        h2 { color: white; margin: 7px 0 18px; font-size: 23px; }
+        h3 { color: var(--gold2); margin: 25px 0 12px; font-size: 17px; }
+        p { line-height: 1.9; }
+        .muted { color: var(--muted); font-size: 13px; line-height: 1.9; }
+        label { display: block; margin: 15px 0 7px; color: #f4e6c8; font-size: 13px; font-weight: 600; }
+        input, textarea, select {
+            width: 100%; min-height: 49px; padding: 11px 14px;
+            border: 1px solid rgba(232,189,98,.3); border-radius: 13px;
+            outline: none; color: white; background: rgba(3,13,27,.55);
+            font-size: 14px; transition: .2s;
+        }
+        input:focus, textarea:focus, select:focus {
+            border-color: var(--gold); box-shadow: 0 0 0 3px rgba(232,189,98,.12);
+        }
+        input::placeholder { color: #91a0b6; }
+        input[type="radio"] { width: 18px; min-height: auto; accent-color: var(--gold); }
+        button, .btn {
+            display: inline-flex; justify-content: center; align-items: center; gap: 8px;
+            min-height: 46px; border: 0; border-radius: 13px; padding: 11px 19px;
+            color: #172033; font-size: 14px; font-weight: 800; cursor: pointer;
+            background: linear-gradient(135deg, var(--gold2), #d5a447);
+            box-shadow: 0 7px 20px rgba(207,158,65,.17);
+            transition: transform .15s, filter .15s;
+        }
+        button:hover, .btn:hover { transform: translateY(-2px); filter: brightness(1.06); }
+        .btn-teal { color: white; background: linear-gradient(135deg, #32c7b2, #168f85); }
+        .btn-purple { color: white; background: linear-gradient(135deg, #9a88ec, #6754ba); }
+        .btn-red, button.no { color: white; background: linear-gradient(135deg, #e77882, #bd4055); }
+        .btn-outline {
+            color: var(--gold2); background: transparent;
+            border: 1px solid rgba(232,189,98,.45); box-shadow: none;
+        }
+        .full { width: 100%; margin-top: 18px; }
+        .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+        .choice-row { display: flex; flex-wrap: wrap; gap: 12px; }
+        .choice {
+            flex: 1; min-width: 130px; display: flex; align-items: center; gap: 9px;
+            padding: 13px; border-radius: 13px; border: 1px solid rgba(232,189,98,.25);
+            background: rgba(0,0,0,.13);
+        }
+        .member {
+            padding: 15px; margin: 12px 0; border-radius: 16px;
+            border: 1px solid rgba(232,189,98,.2); background: rgba(3,13,27,.25);
+        }
+        .member-grid { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end; }
+        .member-grid label { margin-top: 0; }
+        .remove-member { min-width: 48px; padding: 10px; }
+        .alert {
+            margin: 12px auto; padding: 12px 15px; border-radius: 13px;
+            background: rgba(40,183,165,.14); border: 1px solid rgba(40,183,165,.4);
+            color: #c8fff5; font-size: 13px;
+        }
+        .alert.error { background: rgba(216,91,105,.13); border-color: rgba(216,91,105,.4); color: #ffd7dc; }
+        .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 18px 0; }
+        .stat {
+            padding: 18px 12px; border-radius: 17px; text-align: center;
+            border: 1px solid rgba(232,189,98,.24);
+            background: linear-gradient(145deg, rgba(232,189,98,.13), rgba(255,255,255,.035));
+        }
+        .stat strong { display: block; color: var(--gold2); font-size: 27px; }
+        .stat span { color: var(--muted); font-size: 12px; }
+        .search-box { display: flex; flex-wrap: wrap; gap: 9px; margin: 20px 0; }
+        .search-box form { display: flex; flex: 1; gap: 8px; min-width: 230px; }
+        .search-box input { flex: 1; min-width: 100px; }
+        .table-wrap { width: 100%; overflow-x: auto; border-radius: 15px; border: 1px solid rgba(232,189,98,.2); }
+        table { width: 100%; border-collapse: collapse; min-width: 570px; background: rgba(3,13,27,.25); }
+        th, td { padding: 12px 10px; text-align: right; border-bottom: 1px solid rgba(255,255,255,.09); font-size: 12px; vertical-align: top; }
+        th { color: var(--gold2); background: rgba(232,189,98,.1); }
+        td { color: #e5eaf2; }
+        .status-yes { color: #73e1c9; font-weight: 800; }
+        .status-no { color: #ff9ba5; font-weight: 800; }
+        .empty { text-align: center; color: var(--muted); padding: 25px; }
+        .footer { text-align: center; padding: 25px 10px 18px; color: #8999b0; font-size: 11px; }
+        .footer b { color: var(--gold); font-weight: 500; }
+        .small-link { color: var(--gold2); font-size: 13px; }
+        .hidden { display: none !important; }
+        @media (max-width: 600px) {
+            .topbar { padding: 14px 15px; }
+            .top-tag { display: none; }
+            .brand-en { font-size: 14px; }
+            .member-grid { grid-template-columns: 1fr 1fr; }
+            .remove-member { grid-column: 1 / -1; width: 100%; }
+            .stats { grid-template-columns: 1fr; }
+            .search-box form { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+    <header class="topbar">
+        <div class="brand">
+            <div class="brand-mark">الغ</div>
+            <div>
+                <div class="brand-en">ALGHADIR WALK</div>
+                <div class="brand-fa">سامانه ثبت‌نام پیاده‌روی خانوادگی الغدیر</div>
+            </div>
+        </div>
+        <div class="top-tag">TOGETHER • WALK • JOY</div>
+    </header>
+
+    <main>
+        <section class="hero">
+            <div class="eyebrow">A DAY TO REMEMBER</div>
+            <h1>الغدیر واک</h1>
+            <p>با هم، برای یک روز زیبا و خاطره‌انگیز</p>
+        </section>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% for category, message in messages %}
+                <div class="alert {% if category == 'error' %}error{% endif %}">{{ message }}</div>
+            {% endfor %}
+        {% endwith %}
+
+        {{ content|safe }}
+    </main>
+
+    <footer class="footer">
+        سازنده: <b>علیرضا روستا</b>
+    </footer>
+</body>
+</html>
+"""
+
+
+# ---------------------------------------------------------
+# 4) HOME / FAMILY LOGIN
+# ---------------------------------------------------------
+
+HOME_TEMPLATE = r"""
+<div class="card">
+    <div class="section-kicker">FAMILY ACCESS</div>
+    <h2>ورود خانواده</h2>
+    <p class="muted">
+        برای ثبت یا ویرایش پاسخ خانواده، شماره تلفن و رمز مشترک خانواده را وارد کنید.
+    </p>
+
+    <form method="post">
+        <input type="hidden" name="_csrf" value="{{ token }}">
+
+        <label>شماره تلفن همراه</label>
+        <input
+            type="tel" name="phone" inputmode="numeric"
+            placeholder="مثلاً 09123456789"
+            pattern="09[0-9]{9}" maxlength="11" required
+            value="{{ phone }}"
+        >
+
+        <label>رمز مشترک خانواده</label>
+        <input type="password" name="password" placeholder="رمز ورود خانواده" required>
+
+        <button class="full" type="submit">ورود و ادامه</button>
+    </form>
+
+    <p class="muted" style="margin-top:18px">
+        مدیر سامانه هستید؟
+        <a class="small-link" href="{{ url_for('admin') }}">ورود مدیر</a>
+    </p>
+</div>
+"""
+
 
 @app.route("/", methods=["GET", "POST"])
 def home():
+    if session.get("family_phone"):
+        return redirect(url_for("register"))
 
     if request.method == "POST":
-
-        if not check_csrf():
-            return "درخواست نامعتبر است. صفحه را دوباره باز کنید.", 400
-
+        require_csrf()
         phone = request.form.get("phone", "").strip()
         password = request.form.get("password", "")
 
-        if not re.fullmatch(r"09[0-9]{9}", phone):
-            return page("""
-            <div class="card">
-                <h2>شماره تلفن معتبر نیست</h2>
-                <p class="description">
-                    شماره را با فرمت 09xxxxxxxxx وارد کنید.
-                </p>
-                <a class="btn" href="/">بازگشت</a>
-            </div>
-            """)
+        if not re.fullmatch(r"09\d{9}", phone):
+            flash("شماره تلفن باید ۱۱ رقم و با 09 شروع شود.", "error")
+            return page(HOME_TEMPLATE, phone=phone)
 
-        if not hmac.compare_digest(password, FAMILY_PASSWORD):
-            return page("""
-            <div class="card">
-                <h2>رمز ورود اشتباه است</h2>
-                <p class="description">
-                    رمز را بررسی و دوباره تلاش کنید.
-                </p>
-                <a class="btn" href="/">تلاش دوباره</a>
-            </div>
-            """)
+        if not hmac.compare_digest(password, FAMILY_ACCESS_PASSWORD):
+            flash("رمز ورود خانواده اشتباه است.", "error")
+            return page(HOME_TEMPLATE, phone=phone)
 
         session.clear()
-        session["phone"] = phone
-        session["csrf"] = secrets.token_urlsafe(32)
+        session.permanent = True
+        session["family_phone"] = phone
+        csrf_token()
+        return redirect(url_for("register"))
 
-        return redirect("/register")
+    return page(HOME_TEMPLATE, phone="")
 
-    return page("""
-    <div class="card">
-        <div class="section-kicker">WELCOME TO ALGHADIR WALK</div>
 
-        <h2>به جمع خانواده‌های الغدیر خوش آمدید</h2>
+# ---------------------------------------------------------
+# 5) FAMILY REGISTRATION / EDIT
+# ---------------------------------------------------------
 
-        <p class="description">
-            برای ثبت‌نام یا ویرایش اطلاعات خانواده،
-            شماره تلفن و رمز ورود را وارد کنید.
-        </p>
+REGISTER_TEMPLATE = r"""
+<div class="card">
+    <div class="section-kicker">YOUR FAMILY</div>
+    <h2>ثبت‌نام یا ویرایش اطلاعات</h2>
+    <p class="muted">شماره ثبت‌شده: <b>{{ phone }}</b></p>
 
-        <form method="post">
-            <input type="hidden" name="csrf" value="{{ token }}">
+    <form method="post" id="familyForm">
+        <input type="hidden" name="_csrf" value="{{ token }}">
 
-            <input
-                name="phone"
-                placeholder="شماره تلفن همراه"
-                inputmode="numeric"
-                maxlength="11"
-                required
-            >
+        <label>آیا خانواده شما در پیاده‌روی شرکت می‌کند؟</label>
+        <div class="choice-row">
+            <label class="choice">
+                <input type="radio" name="attending" value="yes"
+                    {% if attending %}checked{% endif %}>
+                بله، شرکت می‌کنیم
+            </label>
+            <label class="choice">
+                <input type="radio" name="attending" value="no"
+                    {% if not attending %}checked{% endif %}>
+                خیر، شرکت نمی‌کنیم
+            </label>
+        </div>
 
-            <input
-                type="password"
-                name="password"
-                placeholder="رمز عمومی ثبت‌نام"
-                required
-            >
+        <div id="membersArea" class="{% if not attending %}hidden{% endif %}">
+            <h3>اعضای خانواده</h3>
+            <p class="muted">نام و نام خانوادگی همه افراد شرکت‌کننده را وارد کنید.</p>
 
-            <button>ورود به سامانه ←</button>
+            <div id="members">
+                {% for member in members %}
+                <div class="member">
+                    <div class="member-grid">
+                        <div>
+                            <label>نام</label>
+                            <input name="first_name" placeholder="نام" value="{{ member.first_name }}" maxlength="50">
+                        </div>
+                        <div>
+                            <label>نام خانوادگی</label>
+                            <input name="last_name" placeholder="نام خانوادگی" value="{{ member.last_name }}" maxlength="60">
+                        </div>
+                        <button type="button" class="btn-red remove-member" onclick="removeMember(this)">حذف</button>
+                    </div>
+                </div>
+                {% endfor %}
+                {% if not members %}
+                <div class="member">
+                    <div class="member-grid">
+                        <div>
+                            <label>نام</label>
+                            <input name="first_name" placeholder="نام" maxlength="50">
+                        </div>
+                        <div>
+                            <label>نام خانوادگی</label>
+                            <input name="last_name" placeholder="نام خانوادگی" maxlength="60">
+                        </div>
+                        <button type="button" class="btn-red remove-member" onclick="removeMember(this)">حذف</button>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
+            <button type="button" class="btn-teal" onclick="addMember()">+ افزودن عضو خانواده</button>
+        </div>
+
+        <button class="full" type="submit">ذخیره اطلاعات</button>
+    </form>
+
+    <div class="actions">
+        <form method="post" action="{{ url_for('family_logout') }}">
+            <input type="hidden" name="_csrf" value="{{ token }}">
+            <button type="submit" class="btn-outline">خروج از حساب خانواده</button>
         </form>
     </div>
+</div>
 
-    <div class="card">
-        <div class="section-kicker">ALGHADIR FAMILY EVENT</div>
-        <h2>کنار هم، برای یک خاطره زیبا</h2>
-        <p class="description">
-            حضور شما و خانواده عزیزتان باعث خوشحالی ماست.
-        </p>
-    </div>
-    """, token=csrf_token())
+<script>
+const membersArea = document.getElementById("membersArea");
+document.querySelectorAll('input[name="attending"]').forEach((radio) => {
+    radio.addEventListener("change", () => {
+        membersArea.classList.toggle("hidden", radio.value !== "yes");
+    });
+});
 
+function addMember() {
+    const container = document.getElementById("members");
+    const member = document.createElement("div");
+    member.className = "member";
+    member.innerHTML = `
+        <div class="member-grid">
+            <div>
+                <label>نام</label>
+                <input name="first_name" placeholder="نام" maxlength="50">
+            </div>
+            <div>
+                <label>نام خانوادگی</label>
+                <input name="last_name" placeholder="نام خانوادگی" maxlength="60">
+            </div>
+            <button type="button" class="btn-red remove-member" onclick="removeMember(this)">حذف</button>
+        </div>`;
+    container.appendChild(member);
+}
 
-# -------------------- ثبت‌نام و ویرایش خانواده --------------------
+function removeMember(button) {
+    const container = document.getElementById("members");
+    const cards = container.querySelectorAll(".member");
+    if (cards.length > 1) {
+        button.closest(".member").remove();
+    } else {
+        cards[0].querySelectorAll("input").forEach(input => input.value = "");
+    }
+}
+</script>
+"""
+
 
 @app.route("/register", methods=["GET", "POST"])
+@family_required
 def register():
-
-    phone = session.get("phone")
-
-    if not phone:
-        return redirect("/")
+    phone = session["family_phone"]
 
     try:
-        result = db.table("families").select("*").eq(
-            "phone", phone
-        ).execute()
-
-        family = result.data[0] if result.data else None
+        existing = (
+            db.table("families")
+            .select("*")
+            .eq("phone", phone)
+            .limit(1)
+            .execute()
+            .data
+        )
+        family = existing[0] if existing else None
         members = []
 
         if family:
-            members = db.table("family_members").select("*").eq(
-                "family_id", family["id"]
-            ).execute().data
-
-    except Exception:
-        return page("""
-        <div class="card">
-            <h2>خطا در دریافت اطلاعات</h2>
-            <p class="description">
-                لطفاً دوباره تلاش کنید.
-            </p>
-            <a class="btn" href="/">بازگشت</a>
-        </div>
-        """)
-
-    if request.method == "POST":
-
-        if not check_csrf():
-            return "درخواست نامعتبر است. صفحه را دوباره باز کنید.", 400
-
-        answer = request.form.get("answer")
-
-        if answer not in ("yes", "no"):
-            return redirect("/register")
-
-        new_members = []
-
-        if answer == "yes":
-
-            first_names = request.form.getlist("first_name")
-            last_names = request.form.getlist("last_name")
-
-            if not first_names or len(first_names) > MAX_MEMBERS:
-                return "تعداد اعضای خانواده نامعتبر است.", 400
-
-            if len(first_names) != len(last_names):
-                return "اطلاعات اعضا ناقص است.", 400
-
-            for first, last in zip(first_names, last_names):
-
-                first = first.strip()
-                last = last.strip()
-
-                if (
-                    not first or not last
-                    or len(first) > 50
-                    or len(last) > 50
-                ):
-                    return "نام و نام خانوادگی را درست وارد کنید.", 400
-
-                new_members.append({
-                    "first_name": first,
-                    "last_name": last
-                })
-
-        try:
-
-            if family:
-
-                family_id = family["id"]
-
-                db.table("families").update({
-                    "attending": answer == "yes"
-                }).eq("id", family_id).execute()
-
-                db.table("family_members").delete().eq(
-                    "family_id", family_id
-                ).execute()
-
-            else:
-
-                result = db.table("families").insert({
-                    "phone": phone,
-                    "attending": answer == "yes"
-                }).execute()
-
-                family_id = result.data[0]["id"]
-
-            if new_members:
-
-                rows = [
-                    {
-                        "family_id": family_id,
-                        "first_name": member["first_name"],
-                        "last_name": member["last_name"]
-                    }
-                    for member in new_members
-                ]
-
-                db.table("family_members").insert(rows).execute()
-
-            session.pop("phone", None)
-
-            return page("""
-            <div class="card">
-                <h2>اطلاعات شما با موفقیت ثبت شد</h2>
-                <p class="description">
-                    از همراهی شما سپاسگزاریم.
-                </p>
-                <a class="btn" href="/">بازگشت به صفحه اصلی</a>
-            </div>
-            """)
-
-        except Exception:
-
-            return page("""
-            <div class="card">
-                <h2>ثبت اطلاعات انجام نشد</h2>
-                <p class="description">
-                    لطفاً دوباره تلاش کنید.
-                </p>
-                <a class="btn" href="/register">تلاش مجدد</a>
-            </div>
-            """)
-
-    if family and family["attending"]:
-        initial_members = members
-    else:
-        initial_members = [{"first_name": "", "last_name": ""}]
-
-    return page("""
-    <div class="card">
-
-        <div class="section-kicker">FAMILY REGISTRATION</div>
-
-        <h2>{{ heading }}</h2>
-
-        <p class="description">
-            شماره تماس: {{ phone }}
-        </p>
-
-        <form method="post">
-            <input type="hidden" name="csrf" value="{{ token }}">
-            <input type="hidden" name="answer" value="yes">
-
-            <h3>اعضای خانواده</h3>
-
-            <div id="members">
-
-                {% for m in initial_members %}
-                <div class="member">
-                    <div class="member-title">عضو خانواده</div>
-
-                    <input
-                        name="first_name"
-                        placeholder="نام"
-                        value="{{ m.first_name }}"
-                        maxlength="50"
-                        required
-                    >
-
-                    <input
-                        name="last_name"
-                        placeholder="نام خانوادگی"
-                        value="{{ m.last_name }}"
-                        maxlength="50"
-                        required
-                    >
-                </div>
-                {% endfor %}
-
-            </div>
-
-            <button
-                type="button"
-                class="btn-teal"
-                onclick="addMember()"
-            >
-                + افزودن عضو خانواده
-            </button>
-
-            <button type="submit">
-                بله، شرکت می‌کنیم / ذخیره تغییرات
-            </button>
-        </form>
-
-        <form method="post">
-            <input type="hidden" name="csrf" value="{{ token }}">
-            <input type="hidden" name="answer" value="no">
-
-            <button class="no" type="submit">
-                خیر، امکان حضور نداریم
-            </button>
-        </form>
-
-        <a class="btn btn-purple" href="/leave">
-            خروج
-        </a>
-
-    </div>
-
-    <script>
-    function addMember() {
-
-        const box = document.getElementById("members");
-
-        if (box.children.length >= {{ max_members }}) {
-            alert("حداکثر تعداد اعضا {{ max_members }} نفر است.");
-            return;
-        }
-
-        const div = document.createElement("div");
-        div.className = "member";
-
-        const title = document.createElement("div");
-        title.className = "member-title";
-        title.textContent = "عضو خانواده";
-
-        const first = document.createElement("input");
-        first.name = "first_name";
-        first.placeholder = "نام";
-        first.maxLength = 50;
-        first.required = true;
-
-        const last = document.createElement("input");
-        last.name = "last_name";
-        last.placeholder = "نام خانوادگی";
-        last.maxLength = 50;
-        last.required = true;
-
-        div.append(title, first, last);
-        box.appendChild(div);
-    }
-    </script>
-    """,
-    heading="ویرایش اطلاعات خانواده" if family else "ثبت‌نام خانواده",
-    phone=phone,
-    initial_members=initial_members,
-    token=csrf_token(),
-    max_members=MAX_MEMBERS
-    )
-
-
-# -------------------- خروج خانواده --------------------
-
-@app.route("/leave")
-def leave():
-    session.clear()
-    return redirect("/")
-
-
-# -------------------- پنل مدیریت --------------------
-
-@app.route("/admin", methods=["GET", "POST"])
-def admin():
-
-    if request.method == "POST":
-
-        if not check_csrf():
-            return "درخواست نامعتبر است.", 400
-
-        password = request.form.get("password", "")
-
-        if hmac.compare_digest(password, ADMIN_PASSWORD):
-
-            session.clear()
-            session["admin"] = True
-            session["csrf"] = secrets.token_urlsafe(32)
-
-            return redirect("/admin")
-
-        return page("""
-        <div class="card">
-            <h2>رمز مدیریت اشتباه است</h2>
-            <a class="btn" href="/admin">تلاش دوباره</a>
-        </div>
-        """)
-
-    if not session.get("admin"):
-
-        return page("""
-        <div class="card">
-            <div class="section-kicker">ADMINISTRATION</div>
-            <h2>ورود مدیریت</h2>
-
-            <form method="post">
-                <input type="hidden" name="csrf" value="{{ token }}">
-
-                <input
-                    type="password"
-                    name="password"
-                    placeholder="رمز مدیریت"
-                    required
-                >
-
-                <button>ورود به پنل مدیریت</button>
-            </form>
-        </div>
-        """, token=csrf_token())
-
-    try:
-
-        all_families = db.table("families").select("*").order(
-            "created_at", desc=True
-        ).execute().data
-
-        all_members = db.table("family_members").select(
-            "*"
-        ).execute().data
-
-        # آمار کلی، بدون تأثیر جست‌وجو
-        total = len(all_families)
-        yes = sum(1 for f in all_families if f["attending"])
-        no = total - yes
-
-        attending_ids = {
-            f["id"] for f in all_families if f["attending"]
-        }
-
-        total_people = sum(
-            1 for m in all_members
-            if m["family_id"] in attending_ids
-        )
-
-        # آماده‌سازی اطلاعات برای نمایش
-        members_by_family = {}
-        
-        for member in all_members:
-            family_id = member["family_id"]
+            members = (
+                db.table("family_members")
+                .select("*")
+                .eq("family_id", family["id"])
+                .execute()
+                .data
+            )
+
+        if request.method == "POST":
+            requir
