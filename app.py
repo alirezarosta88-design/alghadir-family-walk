@@ -903,6 +903,6 @@ def admin():
 
         # آماده‌سازی اطلاعات برای نمایش
         members_by_family = {}
-
+        
         for member in all_members:
-            family_id = member["fam
+            family_id = member["family_id"]
