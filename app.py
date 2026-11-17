@@ -12,6 +12,9 @@ from flask import (
 from supabase import create_client
 from openpyxl import Workbook
 
+
+# -------------------- تنظیمات اصلی --------------------
+
 app = Flask(__name__)
 app.secret_key = os.environ["FLASK_SECRET_KEY"]
 
@@ -28,10 +31,21 @@ db = create_client(
 
 FAMILY_PASSWORD = os.environ["FAMILY_ACCESS_PASSWORD"]
 ADMIN_PASSWORD = os.environ["ADMIN_PASSWORD"]
+
 MAX_MEMBERS = 20
 
 
-STYLE = """
+# -------------------- طراحی و رنگ‌بندی --------------------
+
+BASE = """
+<!doctype html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#101a35">
+<title>ALGHADIR WALK | الغدیر واک</title>
+
 <style>
 :root {
     --navy: #101a35;
@@ -156,12 +170,12 @@ body {
 }
 
 .nav-menu a:hover {
-    transform: translateY(-3px);
+    transform: translateY(-2px);
     filter: brightness(1.15);
 }
 
 .nav-home {
-    background: #b58b3d;
+    background: #52617f;
 }
 
 .nav-register {
@@ -173,228 +187,137 @@ body {
 }
 
 main {
-    width: 100%;
     max-width: 850px;
-    margin: 30px auto;
-    padding: 0 15px;
-    min-height: 300px;
+    margin: 28px auto;
+    padding: 0 14px;
+    min-height: 350px;
 }
 
 .card {
     background: rgba(255,255,255,.96);
-    border: 1px solid #e8e0d0;
-    border-top: 4px solid var(--gold);
-    border-radius: 23px;
-    padding: 27px;
-    margin-bottom: 22px;
-    box-shadow: 0 14px 40px #15213a12;
+    border: 1px solid #e8dfca;
+    border-radius: 20px;
+    padding: 25px;
+    margin-bottom: 20px;
+    box-shadow: 0 12px 35px #101a3510;
 }
 
-h2 {
+.card h2 {
     text-align: center;
     color: var(--navy);
-    font-size: 22px;
-    margin: 5px 0 20px;
-}
-
-h3 {
-    color: var(--navy2);
-    margin-top: 25px;
+    margin-top: 5px;
 }
 
 .section-kicker {
-    color: #b58b3d;
     text-align: center;
-    font-size: 12px;
+    color: #a88743;
+    font-size: 11px;
     font-weight: bold;
-    margin-bottom: 9px;
+    letter-spacing: 1px;
 }
 
 .description {
+    color: #687187;
+    line-height: 2;
     text-align: center;
-    color: var(--muted);
     font-size: 14px;
-    line-height: 2;
-}
-
-.muted {
-    color: var(--muted);
-    font-size: 13px;
-    line-height: 2;
 }
 
 input {
     width: 100%;
-    padding: 15px;
-    border: 1px solid #dce0e9;
-    border-radius: 12px;
+    padding: 14px;
     margin: 8px 0;
-    font-size: 14px;
-    background: #fbfcff;
+    border: 1px solid #dce0e8;
+    border-radius: 11px;
+    background: #fafbfe;
+    font-size: 15px;
+    font-family: Tahoma, Arial, sans-serif;
     outline: none;
-    font-family: inherit;
-    transition: .2s;
 }
 
 input:focus {
     border-color: var(--gold);
     box-shadow: 0 0 0 3px #d6ad5520;
-    background: white;
 }
 
-button,
-.btn {
+button, .btn {
     display: block;
     width: 100%;
-    padding: 14px;
-    border: none;
-    border-radius: 12px;
-    background: linear-gradient(135deg, #b58b3d, #e5c477);
+    padding: 13px;
+    border: 0;
+    border-radius: 11px;
+    background: linear-gradient(135deg, #b68a36, #e5c879);
     color: #17213a;
     font-size: 14px;
     font-weight: bold;
+    font-family: Tahoma, Arial, sans-serif;
     text-align: center;
     text-decoration: none;
     margin-top: 12px;
     cursor: pointer;
-    font-family: inherit;
     transition: .2s;
 }
 
-button:hover,
-.btn:hover {
+button:hover, .btn:hover {
     transform: translateY(-2px);
-    box-shadow: 0 7px 18px #b58b3d30;
+    filter: brightness(1.04);
 }
 
-.secondary {
-    background: linear-gradient(135deg, #258d88, #55b7a8);
+.btn-teal {
+    background: var(--teal);
     color: white;
 }
 
-.purple-btn {
-    background: linear-gradient(135deg, #66528e, #9b83c5);
+.btn-purple {
+    background: var(--purple);
     color: white;
 }
 
-.no,
-.danger-btn {
-    background: linear-gradient(135deg, #a93348, #d66b75);
+.no, .btn-red {
+    background: var(--red);
     color: white;
 }
 
-.member-card {
-    background: linear-gradient(135deg, #f8f5ee, #f3f5fa);
-    border: 1px solid #e7dfcf;
-    border-radius: 15px;
-    padding: 15px;
-    margin: 13px 0;
+.member {
+    background: #f7f8fb;
+    border: 1px solid #e5e8ef;
+    padding: 14px;
+    border-radius: 13px;
+    margin: 12px 0;
 }
 
 .member-title {
-    color: #a17b36;
-    font-size: 13px;
+    color: #9a7a3c;
+    font-size: 12px;
     font-weight: bold;
 }
 
-.member-card input {
-    background: white;
-}
-
-.member-remove {
-    padding: 9px;
-    font-size: 12px;
-    background: #f3e4e5;
-    color: #a93348;
-    margin-top: 5px;
-}
-
-.phone-box {
+.stat {
+    background: linear-gradient(135deg, #f7f1e3, #fffaf0);
+    border: 1px solid #eadbb8;
+    padding: 16px;
+    border-radius: 13px;
+    margin: 9px 0;
     text-align: center;
-    background: #f7f2e7;
-    border: 1px solid #e8d8b5;
-    border-radius: 12px;
-    padding: 12px;
-    color: #78602e;
-    font-size: 13px;
-    margin-bottom: 18px;
 }
 
 .stats {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
-    margin: 20px 0;
-}
-
-.stat {
-    padding: 17px 10px;
-    border-radius: 15px;
-    text-align: center;
-    color: white;
-    min-width: 0;
+    gap: 10px;
+    margin: 18px 0;
 }
 
 .stat strong {
     display: block;
     font-size: 25px;
-    margin-bottom: 8px;
+    color: #9b7734;
+    margin-bottom: 6px;
 }
 
 .stat span {
     font-size: 12px;
-}
-
-.stat-gold {
-    background: linear-gradient(135deg, #a77a2e, #d8b45d);
-}
-
-.stat-teal {
-    background: linear-gradient(135deg, #217c79, #48aaa0);
-}
-
-.stat-purple {
-    background: linear-gradient(135deg, #66528e, #927bb8);
-}
-
-.table-wrap {
-    overflow-x: auto;
-    border-radius: 14px;
-    border: 1px solid #e5e7ed;
-}
-
-table {
-    width: 100%;
-    min-width: 550px;
-    border-collapse: collapse;
-    font-size: 13px;
-    background: white;
-}
-
-th {
-    background: var(--navy);
-    color: var(--gold2);
-    padding: 13px 10px;
-    text-align: right;
-}
-
-td {
-    padding: 12px 10px;
-    border-bottom: 1px solid #eceef2;
-    text-align: right;
-    line-height: 1.9;
-}
-
-tr:nth-child(even) {
-    background: #faf9f6;
-}
-
-table button {
-    min-width: 60px;
-    width: auto;
-    padding: 8px 12px;
-    margin: 0;
-    font-size: 12px;
+    color: #687187;
 }
 
 .search-box {
@@ -403,6 +326,39 @@ table button {
     padding: 15px;
     border-radius: 15px;
     margin: 18px 0;
+}
+
+.table-wrap {
+    overflow-x: auto;
+    border-radius: 12px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    min-width: 560px;
+    background: white;
+}
+
+td, th {
+    padding: 12px 9px;
+    border-bottom: 1px solid #ececf0;
+    text-align: right;
+    vertical-align: top;
+}
+
+th {
+    background: var(--navy2);
+    color: white;
+}
+
+table button {
+    min-width: 60px;
+    width: auto;
+    padding: 8px 12px;
+    margin: 0;
+    font-size: 12px;
 }
 
 .empty {
@@ -434,6 +390,7 @@ footer span {
     }
 
     .stats {
+        grid-template-columns: 1fr;
         gap: 7px;
     }
 
@@ -455,18 +412,6 @@ footer span {
     }
 }
 </style>
-"""
-
-
-BASE = """
-<!doctype html>
-<html lang="fa" dir="rtl">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#101a35">
-<title>ALGHADIR WALK | الغدیر واک</title>
-""" + STYLE + """
 </head>
 
 <body>
@@ -492,7 +437,7 @@ BASE = """
 </header>
 
 <main>
-{{ body|safe }}
+    {{ body|safe }}
 </main>
 
 <footer>
@@ -503,6 +448,8 @@ BASE = """
 </html>
 """
 
+
+# -------------------- توابع کمکی --------------------
 
 def page(template, **data):
     body = render_template_string(template, **data)
@@ -530,6 +477,15 @@ def admin_required(fn):
     return wrapper
 
 
+def safe_excel(value):
+    value = str(value or "")
+    if value.startswith(("=", "+", "-", "@")):
+        return "'" + value
+    return value
+
+
+# -------------------- صفحه اصلی و ورود خانواده --------------------
+
 @app.route("/", methods=["GET", "POST"])
 def home():
 
@@ -545,7 +501,9 @@ def home():
             return page("""
             <div class="card">
                 <h2>شماره تلفن معتبر نیست</h2>
-                <p class="description">شماره را با فرمت 09xxxxxxxxx وارد کنید.</p>
+                <p class="description">
+                    شماره را با فرمت 09xxxxxxxxx وارد کنید.
+                </p>
                 <a class="btn" href="/">بازگشت</a>
             </div>
             """)
@@ -554,7 +512,9 @@ def home():
             return page("""
             <div class="card">
                 <h2>رمز ورود اشتباه است</h2>
-                <p class="description">رمز را بررسی و دوباره تلاش کنید.</p>
+                <p class="description">
+                    رمز را بررسی و دوباره تلاش کنید.
+                </p>
                 <a class="btn" href="/">تلاش دوباره</a>
             </div>
             """)
@@ -608,6 +568,8 @@ def home():
     """, token=csrf_token())
 
 
+# -------------------- ثبت‌نام و ویرایش خانواده --------------------
+
 @app.route("/register", methods=["GET", "POST"])
 def register():
 
@@ -633,7 +595,9 @@ def register():
         return page("""
         <div class="card">
             <h2>خطا در دریافت اطلاعات</h2>
-            <p class="description">لطفاً کمی بعد دوباره تلاش کنید.</p>
+            <p class="description">
+                لطفاً دوباره تلاش کنید.
+            </p>
             <a class="btn" href="/">بازگشت</a>
         </div>
         """)
@@ -706,10 +670,10 @@ def register():
                 rows = [
                     {
                         "family_id": family_id,
-                        "first_name": m["first_name"],
-                        "last_name": m["last_name"]
+                        "first_name": member["first_name"],
+                        "last_name": member["last_name"]
                     }
-                    for m in new_members
+                    for member in new_members
                 ]
 
                 db.table("family_members").insert(rows).execute()
@@ -718,10 +682,9 @@ def register():
 
             return page("""
             <div class="card">
-                <div class="section-kicker">SUCCESS</div>
-                <h2>✓ اطلاعات شما با موفقیت ثبت شد</h2>
+                <h2>اطلاعات شما با موفقیت ثبت شد</h2>
                 <p class="description">
-                    از همراهی شما در الغدیر واک سپاسگزاریم.
+                    از همراهی شما سپاسگزاریم.
                 </p>
                 <a class="btn" href="/">بازگشت به صفحه اصلی</a>
             </div>
@@ -751,31 +714,20 @@ def register():
 
         <h2>{{ heading }}</h2>
 
-        <div class="phone-box">
-            شماره تلفن ثبت‌شده: {{ phone }}
-        </div>
-
         <p class="description">
-            آیا برای پیاده‌روی تشریف می‌آورید؟
+            شماره تماس: {{ phone }}
         </p>
 
         <form method="post">
-
             <input type="hidden" name="csrf" value="{{ token }}">
             <input type="hidden" name="answer" value="yes">
 
             <h3>اعضای خانواده</h3>
 
-            <p class="muted">
-                نام و نام خانوادگی هر یک از اعضای شرکت‌کننده را وارد کنید.
-            </p>
-
             <div id="members">
 
                 {% for m in initial_members %}
-
-                <div class="member-card">
-
+                <div class="member">
                     <div class="member-title">عضو خانواده</div>
 
                     <input
@@ -793,104 +745,72 @@ def register():
                         maxlength="50"
                         required
                     >
-
-                    <button
-                        type="button"
-                        class="member-remove"
-                        onclick="removeMember(this)"
-                    >حذف این عضو</button>
-
                 </div>
-
                 {% endfor %}
 
             </div>
 
             <button
                 type="button"
-                class="secondary"
+                class="btn-teal"
                 onclick="addMember()"
-            >＋ افزودن عضو خانواده</button>
+            >
+                + افزودن عضو خانواده
+            </button>
 
             <button type="submit">
                 بله، شرکت می‌کنیم / ذخیره تغییرات
             </button>
-
         </form>
 
         <form method="post">
-
             <input type="hidden" name="csrf" value="{{ token }}">
             <input type="hidden" name="answer" value="no">
 
-            <button class="no">
+            <button class="no" type="submit">
                 خیر، امکان حضور نداریم
             </button>
-
         </form>
 
-        <a class="btn purple-btn" href="/leave">
-            خروج از حساب
+        <a class="btn btn-purple" href="/leave">
+            خروج
         </a>
 
     </div>
 
     <script>
-
     function addMember() {
 
-        const box = document.getElementById('members');
+        const box = document.getElementById("members");
 
         if (box.children.length >= {{ max_members }}) {
-            alert('حداکثر تعداد اعضا {{ max_members }} نفر است.');
+            alert("حداکثر تعداد اعضا {{ max_members }} نفر است.");
             return;
         }
 
-        const div = document.createElement('div');
-        div.className = 'member-card';
+        const div = document.createElement("div");
+        div.className = "member";
 
-        const title = document.createElement('div');
-        title.className = 'member-title';
-        title.textContent = 'عضو جدید خانواده';
+        const title = document.createElement("div");
+        title.className = "member-title";
+        title.textContent = "عضو خانواده";
 
-        const first = document.createElement('input');
-        first.name = 'first_name';
-        first.placeholder = 'نام';
+        const first = document.createElement("input");
+        first.name = "first_name";
+        first.placeholder = "نام";
         first.maxLength = 50;
         first.required = true;
 
-        const last = document.createElement('input');
-        last.name = 'last_name';
-        last.placeholder = 'نام خانوادگی';
+        const last = document.createElement("input");
+        last.name = "last_name";
+        last.placeholder = "نام خانوادگی";
         last.maxLength = 50;
         last.required = true;
 
-        const remove = document.createElement('button');
-        remove.type = 'button';
-        remove.className = 'member-remove';
-        remove.textContent = 'حذف این عضو';
-        remove.onclick = function() {
-            removeMember(remove);
-        };
-
-        div.append(title, first, last, remove);
+        div.append(title, first, last);
         box.appendChild(div);
     }
-
-    function removeMember(button) {
-
-        const box = document.getElementById('members');
-
-        if (box.children.length <= 1) {
-            alert('حداقل یک عضو باید باقی بماند.');
-            return;
-        }
-
-        button.closest('.member-card').remove();
-    }
-
     </script>
-
     """,
     heading="ویرایش اطلاعات خانواده" if family else "ثبت‌نام خانواده",
     phone=phone,
@@ -900,11 +820,15 @@ def register():
     )
 
 
+# -------------------- خروج خانواده --------------------
+
 @app.route("/leave")
 def leave():
     session.clear()
     return redirect("/")
 
+
+# -------------------- پنل مدیریت --------------------
 
 @app.route("/admin", methods=["GET", "POST"])
 def admin():
@@ -931,4 +855,54 @@ def admin():
         </div>
         """)
 
-    if not sess
+    if not session.get("admin"):
+
+        return page("""
+        <div class="card">
+            <div class="section-kicker">ADMINISTRATION</div>
+            <h2>ورود مدیریت</h2>
+
+            <form method="post">
+                <input type="hidden" name="csrf" value="{{ token }}">
+
+                <input
+                    type="password"
+                    name="password"
+                    placeholder="رمز مدیریت"
+                    required
+                >
+
+                <button>ورود به پنل مدیریت</button>
+            </form>
+        </div>
+        """, token=csrf_token())
+
+    try:
+
+        all_families = db.table("families").select("*").order(
+            "created_at", desc=True
+        ).execute().data
+
+        all_members = db.table("family_members").select(
+            "*"
+        ).execute().data
+
+        # آمار کلی، بدون تأثیر جست‌وجو
+        total = len(all_families)
+        yes = sum(1 for f in all_families if f["attending"])
+        no = total - yes
+
+        attending_ids = {
+            f["id"] for f in all_families if f["attending"]
+        }
+
+        total_people = sum(
+            1 for m in all_members
+            if m["family_id"] in attending_ids
+        )
+
+        # آماده‌سازی اطلاعات برای نمایش
+        members_by_family = {}
+
+        for member in all_members:
+            family_id = member["fam
