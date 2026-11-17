@@ -1,16 +1,13 @@
-
 import os
 import re
 import io
-import csv
 import hmac
 import secrets
-from datetime import datetime
 from functools import wraps
 
 from flask import (
     Flask, request, redirect, session,
-    render_template_string, send_file, url_for
+    render_template_string, send_file
 )
 from supabase import create_client
 from openpyxl import Workbook
@@ -33,67 +30,496 @@ FAMILY_PASSWORD = os.environ["FAMILY_ACCESS_PASSWORD"]
 ADMIN_PASSWORD = os.environ["ADMIN_PASSWORD"]
 MAX_MEMBERS = 20
 
+
 STYLE = """
 <style>
-*{box-sizing:border-box}
-body{margin:0;background:#f0f5f1;color:#203b2e;
-font-family:Tahoma,Arial;direction:rtl}
-header{background:#123d2b;color:white;padding:25px 12px;text-align:center}
-header h1{font-size:25px;margin:8px}
-header p{color:#d4eadb}
-main{max-width:750px;margin:25px auto;padding:12px}
-.card{background:white;border-radius:16px;padding:22px;
-box-shadow:0 5px 22px #00000010;margin-bottom:18px}
-h2{text-align:center}
-input{width:100%;padding:13px;border:1px solid #ccd9ce;
-border-radius:9px;margin:7px 0;font-size:15px}
-button,.btn{display:block;width:100%;padding:13px;
-border:0;border-radius:9px;background:#176b43;color:white;
-font-size:15px;text-align:center;text-decoration:none;
-margin-top:10px;cursor:pointer}
-.no{background:#a83c3c}
-.member{background:#f0f5f1;padding:12px;border-radius:10px;margin:10px 0}
-.stat{background:#e7f4eb;padding:14px;border-radius:10px;margin:8px 0}
-table{width:100%;border-collapse:collapse;font-size:13px}
-td,th{padding:9px;border-bottom:1px solid #ddd;text-align:right}
-.table-wrap{overflow-x:auto}
-footer{text-align:center;color:#718078;padding:25px;font-size:12px}
-.small{font-size:12px;color:#66756b}
+:root {
+    --navy: #101a35;
+    --navy2: #1b2949;
+    --gold: #d6ad55;
+    --gold2: #f4d991;
+    --cream: #fffaf0;
+    --white: #ffffff;
+    --muted: #778098;
+    --red: #b94352;
+    --teal: #258d88;
+    --purple: #7860a8;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    direction: rtl;
+    font-family: Tahoma, Arial, sans-serif;
+    color: var(--navy);
+    background:
+        radial-gradient(circle at 10% 10%, #e9dfc8 0, transparent 30%),
+        radial-gradient(circle at 90% 80%, #d9e4ed 0, transparent 30%),
+        #f5f3ee;
+    min-height: 100vh;
+}
+
+.hero {
+    position: relative;
+    overflow: hidden;
+    padding: 35px 15px 25px;
+    text-align: center;
+    color: white;
+    background:
+        radial-gradient(circle at 15% 20%, #33456c 0, transparent 35%),
+        radial-gradient(circle at 85% 80%, #4a3b61 0, transparent 35%),
+        linear-gradient(135deg, #0d1730, #202d4c);
+    border-bottom: 3px solid var(--gold);
+}
+
+.hero:before,
+.hero:after {
+    content: "";
+    position: absolute;
+    border: 1px solid #d6ad5530;
+    border-radius: 50%;
+    width: 220px;
+    height: 220px;
+    pointer-events: none;
+}
+
+.hero:before {
+    top: -130px;
+    right: -80px;
+}
+
+.hero:after {
+    bottom: -170px;
+    left: -80px;
+}
+
+.hero-inner {
+    position: relative;
+    z-index: 1;
+    max-width: 850px;
+    margin: auto;
+}
+
+.eyebrow {
+    display: inline-block;
+    padding: 7px 16px;
+    border: 1px solid #d6ad5580;
+    border-radius: 30px;
+    color: var(--gold2);
+    font-size: 12px;
+    margin-bottom: 12px;
+    background: #ffffff0a;
+}
+
+.brand {
+    font-family: Arial, sans-serif;
+    font-size: clamp(27px, 6vw, 43px);
+    font-weight: 900;
+    letter-spacing: 3px;
+    margin: 5px 0;
+}
+
+.brand span {
+    color: var(--gold2);
+}
+
+.fa-brand {
+    color: var(--gold2);
+    font-size: 25px;
+    font-weight: bold;
+    margin: 8px 0;
+}
+
+.tagline {
+    color: #d5dced;
+    font-size: 13px;
+    margin: 8px 0 20px;
+}
+
+.nav-menu {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 9px;
+}
+
+.nav-menu a {
+    text-decoration: none;
+    padding: 10px 17px;
+    border-radius: 12px;
+    color: white;
+    font-size: 13px;
+    transition: .2s;
+}
+
+.nav-menu a:hover {
+    transform: translateY(-3px);
+    filter: brightness(1.15);
+}
+
+.nav-home {
+    background: #b58b3d;
+}
+
+.nav-register {
+    background: #258d88;
+}
+
+.nav-admin {
+    background: #7860a8;
+}
+
+main {
+    width: 100%;
+    max-width: 850px;
+    margin: 30px auto;
+    padding: 0 15px;
+    min-height: 300px;
+}
+
+.card {
+    background: rgba(255,255,255,.96);
+    border: 1px solid #e8e0d0;
+    border-top: 4px solid var(--gold);
+    border-radius: 23px;
+    padding: 27px;
+    margin-bottom: 22px;
+    box-shadow: 0 14px 40px #15213a12;
+}
+
+h2 {
+    text-align: center;
+    color: var(--navy);
+    font-size: 22px;
+    margin: 5px 0 20px;
+}
+
+h3 {
+    color: var(--navy2);
+    margin-top: 25px;
+}
+
+.section-kicker {
+    color: #b58b3d;
+    text-align: center;
+    font-size: 12px;
+    font-weight: bold;
+    margin-bottom: 9px;
+}
+
+.description {
+    text-align: center;
+    color: var(--muted);
+    font-size: 14px;
+    line-height: 2;
+}
+
+.muted {
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 2;
+}
+
+input {
+    width: 100%;
+    padding: 15px;
+    border: 1px solid #dce0e9;
+    border-radius: 12px;
+    margin: 8px 0;
+    font-size: 14px;
+    background: #fbfcff;
+    outline: none;
+    font-family: inherit;
+    transition: .2s;
+}
+
+input:focus {
+    border-color: var(--gold);
+    box-shadow: 0 0 0 3px #d6ad5520;
+    background: white;
+}
+
+button,
+.btn {
+    display: block;
+    width: 100%;
+    padding: 14px;
+    border: none;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #b58b3d, #e5c477);
+    color: #17213a;
+    font-size: 14px;
+    font-weight: bold;
+    text-align: center;
+    text-decoration: none;
+    margin-top: 12px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: .2s;
+}
+
+button:hover,
+.btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 7px 18px #b58b3d30;
+}
+
+.secondary {
+    background: linear-gradient(135deg, #258d88, #55b7a8);
+    color: white;
+}
+
+.purple-btn {
+    background: linear-gradient(135deg, #66528e, #9b83c5);
+    color: white;
+}
+
+.no,
+.danger-btn {
+    background: linear-gradient(135deg, #a93348, #d66b75);
+    color: white;
+}
+
+.member-card {
+    background: linear-gradient(135deg, #f8f5ee, #f3f5fa);
+    border: 1px solid #e7dfcf;
+    border-radius: 15px;
+    padding: 15px;
+    margin: 13px 0;
+}
+
+.member-title {
+    color: #a17b36;
+    font-size: 13px;
+    font-weight: bold;
+}
+
+.member-card input {
+    background: white;
+}
+
+.member-remove {
+    padding: 9px;
+    font-size: 12px;
+    background: #f3e4e5;
+    color: #a93348;
+    margin-top: 5px;
+}
+
+.phone-box {
+    text-align: center;
+    background: #f7f2e7;
+    border: 1px solid #e8d8b5;
+    border-radius: 12px;
+    padding: 12px;
+    color: #78602e;
+    font-size: 13px;
+    margin-bottom: 18px;
+}
+
+.stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    margin: 20px 0;
+}
+
+.stat {
+    padding: 17px 10px;
+    border-radius: 15px;
+    text-align: center;
+    color: white;
+    min-width: 0;
+}
+
+.stat strong {
+    display: block;
+    font-size: 25px;
+    margin-bottom: 8px;
+}
+
+.stat span {
+    font-size: 12px;
+}
+
+.stat-gold {
+    background: linear-gradient(135deg, #a77a2e, #d8b45d);
+}
+
+.stat-teal {
+    background: linear-gradient(135deg, #217c79, #48aaa0);
+}
+
+.stat-purple {
+    background: linear-gradient(135deg, #66528e, #927bb8);
+}
+
+.table-wrap {
+    overflow-x: auto;
+    border-radius: 14px;
+    border: 1px solid #e5e7ed;
+}
+
+table {
+    width: 100%;
+    min-width: 550px;
+    border-collapse: collapse;
+    font-size: 13px;
+    background: white;
+}
+
+th {
+    background: var(--navy);
+    color: var(--gold2);
+    padding: 13px 10px;
+    text-align: right;
+}
+
+td {
+    padding: 12px 10px;
+    border-bottom: 1px solid #eceef2;
+    text-align: right;
+    line-height: 1.9;
+}
+
+tr:nth-child(even) {
+    background: #faf9f6;
+}
+
+table button {
+    min-width: 60px;
+    width: auto;
+    padding: 8px 12px;
+    margin: 0;
+    font-size: 12px;
+}
+
+.search-box {
+    background: #f7f8fb;
+    border: 1px solid #e7e9ef;
+    padding: 15px;
+    border-radius: 15px;
+    margin: 18px 0;
+}
+
+.empty {
+    text-align: center;
+    color: var(--muted);
+    padding: 20px;
+}
+
+footer {
+    text-align: center;
+    padding: 22px 10px;
+    color: #9299a8;
+    font-size: 9px;
+    letter-spacing: .2px;
+}
+
+footer span {
+    color: #9a814f;
+}
+
+@media(max-width:600px) {
+    .hero {
+        padding-top: 27px;
+    }
+
+    .card {
+        padding: 20px 16px;
+        border-radius: 18px;
+    }
+
+    .stats {
+        gap: 7px;
+    }
+
+    .stat {
+        padding: 13px 5px;
+    }
+
+    .stat strong {
+        font-size: 21px;
+    }
+
+    .stat span {
+        font-size: 10px;
+    }
+
+    .nav-menu a {
+        padding: 9px 12px;
+        font-size: 12px;
+    }
+}
 </style>
 """
 
+
 BASE = """
 <!doctype html>
-<html lang="fa">
+<html lang="fa" dir="rtl">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>ALGHADIR FAMILY WALK</title>
+<meta name="theme-color" content="#101a35">
+<title>ALGHADIR WALK | الغدیر واک</title>
+""" + STYLE + """
 </head>
+
 <body>
-<header>
-<h1>ALGHADIR FAMILY WALK</h1>
-<p>سامانه پیاده‌روی خانوادگی الغدیر</p>
+
+<header class="hero">
+    <div class="hero-inner">
+        <div class="eyebrow">✦ یک روز زیبا در کنار خانواده ✦</div>
+
+        <h1 class="brand">ALGHADIR <span>WALK</span></h1>
+
+        <div class="fa-brand">الغدیر واک</div>
+
+        <p class="tagline">
+            سامانه ثبت‌نام پیاده‌روی خانوادگی
+        </p>
+
+        <nav class="nav-menu">
+            <a class="nav-home" href="/">⌂ صفحه اصلی</a>
+            <a class="nav-register" href="/register">✦ ثبت‌نام خانواده</a>
+            <a class="nav-admin" href="/admin">♛ مدیریت</a>
+        </nav>
+    </div>
 </header>
-<main>{{ body|safe }}</main>
-<footer>سازنده: علیرضا روستا</footer>
+
+<main>
+{{ body|safe }}
+</main>
+
+<footer>
+    <span>سازنده: علیرضا روستا</span>
+</footer>
+
 </body>
 </html>
 """
 
+
 def page(template, **data):
     body = render_template_string(template, **data)
     return render_template_string(BASE, body=body)
+
 
 def csrf_token():
     if "csrf" not in session:
         session["csrf"] = secrets.token_urlsafe(32)
     return session["csrf"]
 
+
 def check_csrf():
     token = request.form.get("csrf", "")
     saved = session.get("csrf", "")
     return bool(saved) and hmac.compare_digest(token, saved)
+
 
 def admin_required(fn):
     @wraps(fn)
@@ -103,9 +529,12 @@ def admin_required(fn):
         return fn(*args, **kwargs)
     return wrapper
 
+
 @app.route("/", methods=["GET", "POST"])
 def home():
+
     if request.method == "POST":
+
         if not check_csrf():
             return "درخواست نامعتبر است. صفحه را دوباره باز کنید.", 400
 
@@ -115,42 +544,75 @@ def home():
         if not re.fullmatch(r"09[0-9]{9}", phone):
             return page("""
             <div class="card">
-            <h2>شماره تلفن معتبر نیست</h2>
-            <a class="btn" href="/">بازگشت</a>
+                <h2>شماره تلفن معتبر نیست</h2>
+                <p class="description">شماره را با فرمت 09xxxxxxxxx وارد کنید.</p>
+                <a class="btn" href="/">بازگشت</a>
             </div>
             """)
 
         if not hmac.compare_digest(password, FAMILY_PASSWORD):
             return page("""
             <div class="card">
-            <h2>رمز ورود اشتباه است</h2>
-            <a class="btn" href="/">تلاش دوباره</a>
+                <h2>رمز ورود اشتباه است</h2>
+                <p class="description">رمز را بررسی و دوباره تلاش کنید.</p>
+                <a class="btn" href="/">تلاش دوباره</a>
             </div>
             """)
 
         session.clear()
         session["phone"] = phone
         session["csrf"] = secrets.token_urlsafe(32)
+
         return redirect("/register")
 
     return page("""
     <div class="card">
-    <h2>به الغدیر فمیلی واک خوش آمدید 🌿</h2>
-    <p>شماره تلفن و رمز عمومی ثبت‌نام را وارد کنید.</p>
-    <form method="post">
-    <input type="hidden" name="csrf" value="{{ token }}">
-    <input name="phone" placeholder="09123456789"
-    inputmode="numeric" maxlength="11" required>
-    <input type="password" name="password"
-    placeholder="رمز عمومی ثبت‌نام" required>
-    <button>ورود به سامانه</button>
-    </form>
+        <div class="section-kicker">WELCOME TO ALGHADIR WALK</div>
+
+        <h2>به جمع خانواده‌های الغدیر خوش آمدید</h2>
+
+        <p class="description">
+            برای ثبت‌نام یا ویرایش اطلاعات خانواده،
+            شماره تلفن و رمز ورود را وارد کنید.
+        </p>
+
+        <form method="post">
+            <input type="hidden" name="csrf" value="{{ token }}">
+
+            <input
+                name="phone"
+                placeholder="شماره تلفن همراه"
+                inputmode="numeric"
+                maxlength="11"
+                required
+            >
+
+            <input
+                type="password"
+                name="password"
+                placeholder="رمز عمومی ثبت‌نام"
+                required
+            >
+
+            <button>ورود به سامانه ←</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <div class="section-kicker">ALGHADIR FAMILY EVENT</div>
+        <h2>کنار هم، برای یک خاطره زیبا</h2>
+        <p class="description">
+            حضور شما و خانواده عزیزتان باعث خوشحالی ماست.
+        </p>
     </div>
     """, token=csrf_token())
 
+
 @app.route("/register", methods=["GET", "POST"])
 def register():
+
     phone = session.get("phone")
+
     if not phone:
         return redirect("/")
 
@@ -170,12 +632,14 @@ def register():
     except Exception:
         return page("""
         <div class="card">
-        <h2>خطا در دریافت اطلاعات</h2>
-        <a class="btn" href="/">بازگشت</a>
+            <h2>خطا در دریافت اطلاعات</h2>
+            <p class="description">لطفاً کمی بعد دوباره تلاش کنید.</p>
+            <a class="btn" href="/">بازگشت</a>
         </div>
         """)
 
     if request.method == "POST":
+
         if not check_csrf():
             return "درخواست نامعتبر است. صفحه را دوباره باز کنید.", 400
 
@@ -187,6 +651,7 @@ def register():
         new_members = []
 
         if answer == "yes":
+
             first_names = request.form.getlist("first_name")
             last_names = request.form.getlist("last_name")
 
@@ -197,10 +662,15 @@ def register():
                 return "اطلاعات اعضا ناقص است.", 400
 
             for first, last in zip(first_names, last_names):
+
                 first = first.strip()
                 last = last.strip()
 
-                if not first or not last or len(first) > 50 or len(last) > 50:
+                if (
+                    not first or not last
+                    or len(first) > 50
+                    or len(last) > 50
+                ):
                     return "نام و نام خانوادگی را درست وارد کنید.", 400
 
                 new_members.append({
@@ -209,7 +679,9 @@ def register():
                 })
 
         try:
+
             if family:
+
                 family_id = family["id"]
 
                 db.table("families").update({
@@ -221,6 +693,7 @@ def register():
                 ).execute()
 
             else:
+
                 result = db.table("families").insert({
                     "phone": phone,
                     "attending": answer == "yes"
@@ -229,6 +702,7 @@ def register():
                 family_id = result.data[0]["id"]
 
             if new_members:
+
                 rows = [
                     {
                         "family_id": family_id,
@@ -237,24 +711,31 @@ def register():
                     }
                     for m in new_members
                 ]
+
                 db.table("family_members").insert(rows).execute()
 
             session.pop("phone", None)
 
             return page("""
             <div class="card">
-            <h2>✅ اطلاعات شما ثبت شد</h2>
-            <p style="text-align:center">از همراهی شما سپاسگزاریم.</p>
-            <a class="btn" href="/">بازگشت</a>
+                <div class="section-kicker">SUCCESS</div>
+                <h2>✓ اطلاعات شما با موفقیت ثبت شد</h2>
+                <p class="description">
+                    از همراهی شما در الغدیر واک سپاسگزاریم.
+                </p>
+                <a class="btn" href="/">بازگشت به صفحه اصلی</a>
             </div>
             """)
 
         except Exception:
+
             return page("""
             <div class="card">
-            <h2>ثبت اطلاعات انجام نشد</h2>
-            <p>لطفاً دوباره تلاش کنید.</p>
-            <a class="btn" href="/register">تلاش مجدد</a>
+                <h2>ثبت اطلاعات انجام نشد</h2>
+                <p class="description">
+                    لطفاً دوباره تلاش کنید.
+                </p>
+                <a class="btn" href="/register">تلاش مجدد</a>
             </div>
             """)
 
@@ -265,58 +746,151 @@ def register():
 
     return page("""
     <div class="card">
-    <h2>{{ heading }}</h2>
-    <p>شماره: {{ phone }}</p>
 
-    <form method="post">
-    <input type="hidden" name="csrf" value="{{ token }}">
-    <input type="hidden" name="answer" value="yes">
+        <div class="section-kicker">FAMILY REGISTRATION</div>
 
-    <div id="members">
-    {% for m in initial_members %}
-    <div class="member">
-    <input name="first_name" placeholder="نام"
-    value="{{ m.first_name }}" required>
-    <input name="last_name" placeholder="نام خانوادگی"
-    value="{{ m.last_name }}" required>
-    </div>
-    {% endfor %}
-    </div>
+        <h2>{{ heading }}</h2>
 
-    <button type="button" onclick="addMember()">+ افزودن عضو خانواده</button>
-    <button type="submit">بله، شرکت می‌کنیم / ذخیره تغییرات</button>
-    </form>
+        <div class="phone-box">
+            شماره تلفن ثبت‌شده: {{ phone }}
+        </div>
 
-    <form method="post">
-    <input type="hidden" name="csrf" value="{{ token }}">
-    <input type="hidden" name="answer" value="no">
-    <button class="no">خیر، امکان حضور نداریم</button>
-    </form>
+        <p class="description">
+            آیا برای پیاده‌روی تشریف می‌آورید؟
+        </p>
 
-    <a class="btn" href="/leave">خروج</a>
+        <form method="post">
+
+            <input type="hidden" name="csrf" value="{{ token }}">
+            <input type="hidden" name="answer" value="yes">
+
+            <h3>اعضای خانواده</h3>
+
+            <p class="muted">
+                نام و نام خانوادگی هر یک از اعضای شرکت‌کننده را وارد کنید.
+            </p>
+
+            <div id="members">
+
+                {% for m in initial_members %}
+
+                <div class="member-card">
+
+                    <div class="member-title">عضو خانواده</div>
+
+                    <input
+                        name="first_name"
+                        placeholder="نام"
+                        value="{{ m.first_name }}"
+                        maxlength="50"
+                        required
+                    >
+
+                    <input
+                        name="last_name"
+                        placeholder="نام خانوادگی"
+                        value="{{ m.last_name }}"
+                        maxlength="50"
+                        required
+                    >
+
+                    <button
+                        type="button"
+                        class="member-remove"
+                        onclick="removeMember(this)"
+                    >حذف این عضو</button>
+
+                </div>
+
+                {% endfor %}
+
+            </div>
+
+            <button
+                type="button"
+                class="secondary"
+                onclick="addMember()"
+            >＋ افزودن عضو خانواده</button>
+
+            <button type="submit">
+                بله، شرکت می‌کنیم / ذخیره تغییرات
+            </button>
+
+        </form>
+
+        <form method="post">
+
+            <input type="hidden" name="csrf" value="{{ token }}">
+            <input type="hidden" name="answer" value="no">
+
+            <button class="no">
+                خیر، امکان حضور نداریم
+            </button>
+
+        </form>
+
+        <a class="btn purple-btn" href="/leave">
+            خروج از حساب
+        </a>
+
     </div>
 
     <script>
-    function addMember(){
-      const box=document.getElementById('members');
-      if(box.children.length >= {{ max_members }}){
-        alert('حداکثر تعداد اعضا {{ max_members }} نفر است.');
-        return;
-      }
-      const div=document.createElement('div');
-      div.className='member';
-      const first=document.createElement('input');
-      first.name='first_name';
-      first.placeholder='نام';
-      first.required=true;
-      const last=document.createElement('input');
-      last.name='last_name';
-      last.placeholder='نام خانوادگی';
-      last.required=true;
-      div.append(first,last);
-      box.appendChild(div);
+
+    function addMember() {
+
+        const box = document.getElementById('members');
+
+        if (box.children.length >= {{ max_members }}) {
+            alert('حداکثر تعداد اعضا {{ max_members }} نفر است.');
+            return;
+        }
+
+        const div = document.createElement('div');
+        div.className = 'member-card';
+
+        const title = document.createElement('div');
+        title.className = 'member-title';
+        title.textContent = 'عضو جدید خانواده';
+
+        const first = document.createElement('input');
+        first.name = 'first_name';
+        first.placeholder = 'نام';
+        first.maxLength = 50;
+        first.required = true;
+
+        const last = document.createElement('input');
+        last.name = 'last_name';
+        last.placeholder = 'نام خانوادگی';
+        last.maxLength = 50;
+        last.required = true;
+
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'member-remove';
+        remove.textContent = 'حذف این عضو';
+        remove.onclick = function() {
+            removeMember(remove);
+        };
+
+        div.append(title, first, last, remove);
+        box.appendChild(div);
     }
+
+    function removeMember(button) {
+
+        const box = document.getElementById('members');
+
+        if (box.children.length <= 1) {
+            alert('حداقل یک عضو باید باقی بماند.');
+            return;
+        }
+
+        button.closest('.member-card').remove();
+    }
+
     </script>
+
     """,
     heading="ویرایش اطلاعات خانواده" if family else "ثبت‌نام خانواده",
     phone=phone,
@@ -325,179 +899,36 @@ def register():
     max_members=MAX_MEMBERS
     )
 
+
 @app.route("/leave")
 def leave():
     session.clear()
     return redirect("/")
 
+
 @app.route("/admin", methods=["GET", "POST"])
 def admin():
+
     if request.method == "POST":
+
         if not check_csrf():
             return "درخواست نامعتبر است.", 400
 
         password = request.form.get("password", "")
 
         if hmac.compare_digest(password, ADMIN_PASSWORD):
+
             session.clear()
             session["admin"] = True
             session["csrf"] = secrets.token_urlsafe(32)
+
             return redirect("/admin")
 
         return page("""
         <div class="card">
-        <h2>رمز مدیریت اشتباه است</h2>
-        <a class="btn" href="/admin">تلاش دوباره</a>
+            <h2>رمز مدیریت اشتباه است</h2>
+            <a class="btn" href="/admin">تلاش دوباره</a>
         </div>
         """)
 
-    if not session.get("admin"):
-        return page("""
-        <div class="card">
-        <h2>ورود مدیریت</h2>
-        <form method="post">
-        <input type="hidden" name="csrf" value="{{ token }}">
-        <input type="password" name="password"
-        placeholder="رمز مدیریت" required>
-        <button>ورود</button>
-        </form>
-        </div>
-        """, token=csrf_token())
-
-    try:
-        families = db.table("families").select("*").order(
-            "created_at", desc=True
-        ).execute().data
-
-        members = db.table("family_members").select("*").execute().data
-
-        search = request.args.get("q", "").strip()
-        if search:
-            families = [
-                f for f in families
-                if search in f["phone"]
-            ]
-
-        yes = sum(1 for f in families if f["attending"])
-        no = len(families) - yes
-
-        return page("""
-        <div class="card">
-        <h2>پنل مدیریت الغدیر</h2>
-
-        <div class="stat">کل خانواده‌ها: {{ total }}</div>
-        <div class="stat">خانواده‌های شرکت‌کننده: {{ yes }}</div>
-        <div class="stat">خانواده‌های غایب: {{ no }}</div>
-
-        <a class="btn" href="/export">دانلود فایل Excel</a>
-
-        <form method="get">
-        <input name="q" placeholder="جست‌وجوی شماره تلفن"
-        value="{{ search }}">
-        <button>جست‌وجو</button>
-        </form>
-
-        <h3>فهرست ثبت‌نام‌ها</h3>
-        <div class="table-wrap">
-        <table>
-        <tr><th>تلفن</th><th>پاسخ</th><th>اعضا</th><th>حذف</th></tr>
-        {% for f in families %}
-        <tr>
-        <td>{{ f.phone }}</td>
-        <td>{{ "بله" if f.attending else "خیر" }}</td>
-        <td>
-        {% for m in members %}
-          {% if m.family_id == f.id %}
-            {{ m.first_name }} {{ m.last_name }}<br>
-          {% endif %}
-        {% endfor %}
-        </td>
-        <td>
-        <form method="post" action="/delete/{{ f.id }}"
-        onsubmit="return confirm('این ثبت‌نام حذف شود؟')">
-        <input type="hidden" name="csrf" value="{{ token }}">
-        <button class="no">حذف</button>
-        </form>
-        </td>
-        </tr>
-        {% endfor %}
-        </table>
-        </div>
-
-        <form method="post" action="/admin-logout">
-        <input type="hidden" name="csrf" value="{{ token }}">
-        <button class="no">خروج مدیر</button>
-        </form>
-        </div>
-        """,
-        families=families,
-        members=members,
-        total=len(families),
-        yes=yes,
-        no=no,
-        search=search,
-        token=csrf_token()
-        )
-
-    except Exception:
-        return page("<div class='card'>خطا در دریافت اطلاعات</div>")
-
-@app.route("/delete/<int:family_id>", methods=["POST"])
-@admin_required
-def delete_family(family_id):
-    if not check_csrf():
-        return "درخواست نامعتبر است.", 400
-
-    try:
-        db.table("families").delete().eq("id", family_id).execute()
-        return redirect("/admin")
-    except Exception:
-        return "حذف انجام نشد.", 500
-
-@app.route("/export")
-@admin_required
-def export():
-    families = db.table("families").select("*").execute().data
-    members = db.table("family_members").select("*").execute().data
-
-    workbook = Workbook()
-    sheet = workbook.active
-    sheet.title = "ثبت نام خانواده ها"
-
-    sheet.append(["شماره تلفن", "پاسخ", "اعضای خانواده"])
-
-    for f in families:
-        names = [
-            m["first_name"] + " " + m["last_name"]
-            for m in members if m["family_id"] == f["id"]
-        ]
-        sheet.append([
-            f["phone"],
-            "بله" if f["attending"] else "خیر",
-            "، ".join(names)
-        ])
-
-    output = io.BytesIO()
-    workbook.save(output)
-    output.seek(0)
-
-    return send_file(
-        output,
-        as_attachment=True,
-        download_name="alghadir-family-walk.xlsx",
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-
-@app.route("/admin-logout", methods=["POST"])
-def admin_logout():
-    if not check_csrf():
-        return "درخواست نامعتبر است.", 400
-    session.clear()
-    return redirect("/admin")
-
-if __name__ == "__main__":
-    app.run(
-        host="0.0.0.0",
-        port=int(os.environ.get("PORT", 5000))
-    )
-        
+    if not sess
